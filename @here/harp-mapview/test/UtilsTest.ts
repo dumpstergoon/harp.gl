@@ -83,7 +83,9 @@ describe("map-view#Utils", function() {
             mapViewMock = {
                 maxZoomLevel: 20,
                 minZoomLevel: 1,
-                camera: cameraMock,
+                camera: {
+                    matrixWorld: new THREE.Matrix4()
+                },
                 projection: mercatorProjection,
                 focalLength: 256,
                 pixelRatio: 1.0
@@ -91,9 +93,12 @@ describe("map-view#Utils", function() {
         });
 
         it("ensures that both functions are inverse", function() {
-            const zoomLevel = MapViewUtils.calculateZoomLevelFromDistance(distance, {
-                ...mapViewMock
-            });
+            mapViewMock.camera.matrixWorld.makeRotationX(THREE.Math.degToRad(30));
+
+            const zoomLevel = MapViewUtils.calculateZoomLevelFromDistanceToGround(
+                mapViewMock,
+                distance
+            );
 
             const calculatedHeight = MapViewUtils.calculateDistanceToGroundFromZoomLevel(
                 mapViewMock,
