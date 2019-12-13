@@ -108,19 +108,7 @@ export class MapViewFog {
             // The fraction of maximum viewing range at which fog fully covers geometry.
             const endRatio = 1.0;
             assert(startRatio <= endRatio);
-            const target = MapViewUtils.rayCastWorldCoordinates(mapView, 0, 0);
-            if (target === null) {
-                throw new Error("MapView does not support a view pointing in the void.");
-            }
-            const t = Math.abs(
-                Math.cos(
-                    MapViewUtils.extractSphericalCoordinatesFromLocation(
-                        mapView,
-                        mapView.camera,
-                        mapView.projection.unprojectPoint(target)
-                    ).tilt
-                )
-            );
+            const t = Math.abs(Math.cos(MapViewUtils.extractCameraTilt(mapView)));
             const density = MathUtils.smoothStep(horizontalDensity, verticalDensity, t);
             this.m_fog.near = MathUtils.lerp(viewRange * startRatio, viewRange, 1.0 - density);
             this.m_fog.far = MathUtils.lerp(viewRange * endRatio, viewRange, density);

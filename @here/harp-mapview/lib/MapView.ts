@@ -139,6 +139,7 @@ const DEFAULT_CAM_NEAR_PLANE = 0.1;
 const DEFAULT_CAM_FAR_PLANE = 4000000;
 const MAX_FIELD_OF_VIEW = 140;
 const MIN_FIELD_OF_VIEW = 10;
+export const MAX_TILT_ANGLE = 89;
 // All objects in fallback tiles are reduced by this amount.
 export const FALLBACK_RENDER_ORDER_OFFSET = 20000;
 
@@ -654,7 +655,8 @@ export class MapView extends THREE.EventDispatcher {
     private readonly m_rteCamera = new THREE.PerspectiveCamera();
 
     private m_focalLength: number;
-    private m_lookAtDistance: number;
+    private m_targetDistance: number;
+    private m_targetPoint = new THREE.Vector3();
     private readonly m_viewRanges: ViewRanges = {
         near: DEFAULT_CAM_NEAR_PLANE,
         far: DEFAULT_CAM_FAR_PLANE,
@@ -896,7 +898,8 @@ export class MapView extends THREE.EventDispatcher {
             DEFAULT_CAM_FAR_PLANE
         );
         this.m_camera.up.set(0, 0, 1);
-        this.m_lookAtDistance = 0;
+        this.m_targetDistance = 0;
+        this.m_targetPoint.set(0, 0, 0);
         this.m_focalLength = 0;
         this.m_scene.add(this.m_camera); // ensure the camera is added to the scene.
         this.m_screenProjector = new ScreenProjector(this.m_camera);
@@ -1421,9 +1424,12 @@ export class MapView extends THREE.EventDispatcher {
     set projection(projection: Projection) {
         // The geo center must be reset when changing the projection, because the
         // camera's position is based on the projected geo center.
-        const target = MapViewUtils.rayCastWorldCoordinates(this, 0, 0);
+        let target = MapViewUtils.getTargetPositionFromCamera(this.camera, this.projection);
         if (target === null) {
-            throw new Error("MapView does not support a view pointing in the void.");
+            logger.warn(
+                "MapView does not support a view pointing in the void, using last focus point."
+            );
+            target = this.targetPoint;
         }
         const targetCoordinates = this.projection.unprojectPoint(target);
         const targetDistance = this.camera.position.distanceTo(target);
@@ -1471,9 +1477,27 @@ export class MapView extends THREE.EventDispatcher {
 
     /**
      * Get distance from camera to the point of focus in world units.
+     *
+     * @note If camera does not point to any ground anymore the last focus point distance is
+     * then returned.
+     *
+     * @returns Last known focus point distance.
      */
-    get lookAtDistance(): number {
-        return this.m_lookAtDistance;
+    get targetDistance(): number {
+        return this.m_targetDistance;
+    }
+
+    /**
+     * Get world coordinates of camera focus point.
+     *
+     * @note The focus point coordinates are updated with each camera update so you don't need
+     * to re-calculate it, although if the camera started looking to the void, the last focus
+     * point is stored.
+     *
+     * @returns world coordinates of last camera focus point.
+     */
+    get targetPoint(): THREE.Vector3 {
+        return this.m_targetPoint;
     }
 
     /**
@@ -1843,7 +1867,7 @@ export class MapView extends THREE.EventDispatcher {
         tiltDeg: number = 0,
         azimuthDeg: number = 0
     ): void {
-        const limitedTilt = Math.min(89, tiltDeg);
+        const limitedTilt = Math.min(MAX_TILT_ANGLE, tiltDeg);
         // MapViewUtils#setRotation uses pitch, not tilt, which is different in sphere projection.
         // But in sphere, in the tangent space of the target of the camera, pitch = tilt. So, put
         // the camera on the target, so the tilt can be passed to getRotation as a pitch.
@@ -1863,6 +1887,9 @@ export class MapView extends THREE.EventDispatcher {
             this.camera.position
         );
         this.camera.updateMatrixWorld(true);
+        // TODO: Consider forcing entire cameras update, see: [[updateCameras]]
+        this.m_targetPoint.copy(this.projection.projectPoint(target));
+        this.m_targetDistance = distance;
     }
 
     /**
@@ -1967,8 +1994,8 @@ export class MapView extends THREE.EventDispatcher {
             // formulas are all equivalent:
             // lookAtDistance = (EQUATORIAL_CIRCUMFERENCE * focalLength) / (256 * zoomLevel^2);
             // lookAtDistance = abs(cameraPos.z) / cos(cameraPitch);
-            // Here we may use precalculated distance (once pre frame):
-            const lookAtDistance = this.m_lookAtDistance;
+            // Here we may use precalculated target distance (once pre frame):
+            const lookAtDistance = this.m_targetDistance;
 
             // Find world space object size that corresponds to one pixel on screen.
             this.m_pixelToWorld = MapViewUtils.calculateWorldSizeByFocalLength(
@@ -2438,13 +2465,14 @@ export class MapView extends THREE.EventDispatcher {
 
         const cameraPitch = MapViewUtils.extractAttitude(this, this.m_camera).pitch;
         const cameraPosZ = this.getCameraHeightAboveTerrain(TERRAIN_ZOOM_LEVEL);
+        const zoomLevelDistance = cameraPosZ / Math.cos(Math.min(cameraPitch, Math.PI / 3));
+        this.m_zoomLevel = MapViewUtils.calculateZoomLevelFromDistance(zoomLevelDistance, this);
+        this.m_fog.update(this, this.m_viewRanges.maximum);
 
-        const target = MapViewUtils.rayCastWorldCoordinates(this, 0, 0);
+        const target = MapViewUtils.getTargetPositionFromCamera(this.m_camera, this.projection);
         if (target !== null) {
-            this.m_lookAtDistance = target.sub(this.camera.position).length();
-            const zoomLevelDistance = cameraPosZ / Math.cos(Math.min(cameraPitch, Math.PI / 3));
-            this.m_zoomLevel = MapViewUtils.calculateZoomLevelFromDistance(zoomLevelDistance, this);
-            this.m_fog.update(this, this.m_viewRanges.maximum);
+            this.m_targetPoint.copy(target);
+            this.m_targetDistance = this.camera.position.distanceTo(target);
         }
     }
 
@@ -2920,7 +2948,7 @@ export class MapView extends THREE.EventDispatcher {
             this.m_camera.lookAt(this.scene.position);
         }
 
-        this.m_lookAtDistance = defaultGeoCenter.altitude!;
+        this.m_targetDistance = defaultGeoCenter.altitude!;
 
         this.calculateFocalLength(height);
 

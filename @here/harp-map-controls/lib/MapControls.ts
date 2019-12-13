@@ -418,8 +418,11 @@ export class MapControls extends THREE.EventDispatcher {
      * of changing the yaw (which would be the camera rotating on itself).
      */
     pointToNorth() {
-        const target = MapViewUtils.rayCastWorldCoordinates(this.mapView, 0, 0);
-        if (target === null) {
+        const targetGeoCoords = MapViewUtils.getTargetCoordinatesFromCamera(
+            this.camera,
+            this.mapView.projection
+        );
+        if (targetGeoCoords === null) {
             throw new Error("MapView does not support a view pointing in the void.");
         }
         this.m_startAzimuth =
@@ -427,7 +430,7 @@ export class MapControls extends THREE.EventDispatcher {
             MapViewUtils.extractSphericalCoordinatesFromLocation(
                 this.mapView,
                 this.camera,
-                this.mapView.projection.unprojectPoint(target)
+                targetGeoCoords
             ).azimuth;
         // Wrap between -PI and PI.
         this.m_startAzimuth = Math.atan2(
@@ -579,15 +582,7 @@ export class MapControls extends THREE.EventDispatcher {
     }
 
     private get currentTilt(): number {
-        const target = MapViewUtils.rayCastWorldCoordinates(this.mapView, 0, 0);
-        if (target === null) {
-            throw new Error("MapView does not support a view pointing in the void.");
-        }
-        return MapViewUtils.extractSphericalCoordinatesFromLocation(
-            this.mapView,
-            this.camera,
-            this.mapView.projection.unprojectPoint(target)
-        ).tilt;
+        return MapViewUtils.extractCameraTilt(this.mapView);
     }
 
     private get targetedTilt(): number {
@@ -693,7 +688,7 @@ export class MapControls extends THREE.EventDispatcher {
         const initialTilt = this.currentTilt;
         const deltaAngle = this.m_currentTilt - initialTilt;
         const oldCameraDistance = this.mapView.camera.position.z / Math.cos(initialTilt);
-        const newHeight = Math.cos(this.currentTilt) * oldCameraDistance;
+        const newHeight = Math.cos(initialTilt) * oldCameraDistance;
 
         MapViewUtils.orbitFocusPoint(
             this.mapView,
