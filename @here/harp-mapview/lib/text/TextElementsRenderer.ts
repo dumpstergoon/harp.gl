@@ -737,7 +737,7 @@ export class TextElementsRenderer {
                             placementStats.numPathTooSmall++;
                         }
                     }
-                    textElementState.reset();
+                    textElementState.textRenderState!.reset();
                     continue;
                 }
             }
@@ -1932,7 +1932,7 @@ export class TextElementsRenderer {
             if (placementStats) {
                 ++placementStats.tooFar;
             }
-            labelState.reset();
+            labelState.textRenderState!.reset();
             return false;
         }
 
@@ -1946,7 +1946,7 @@ export class TextElementsRenderer {
             if (placementStats) {
                 ++placementStats.tooFar;
             }
-            labelState.reset();
+            labelState.textRenderState!.reset();
             return false;
         }
 
@@ -2002,7 +2002,7 @@ export class TextElementsRenderer {
             if (placementStats) {
                 ++placementStats.numNotVisible;
             }
-            labelState.reset();
+            labelState.textRenderState!.reset();
             return false;
         }
 
@@ -2020,6 +2020,7 @@ export class TextElementsRenderer {
                 if (placementStats) {
                     ++placementStats.numNotVisible;
                 }
+                labelState.textRenderState!.reset();
                 return false;
             }
         }
