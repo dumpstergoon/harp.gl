@@ -9,6 +9,7 @@ import { TextElement } from "./TextElement";
 import { TextElementGroup } from "./TextElementGroup";
 import { TextElementFilter, TextElementGroupState } from "./TextElementGroupState";
 import { TextElementState } from "./TextElementState";
+import { TextElementType } from "./TextElementType";
 
 const logger = LoggerManager.instance.create("TextElementsStateCache", { level: LogLevel.Log });
 
@@ -42,6 +43,111 @@ const tmpCachedDuplicate: { entries: TextElementState[]; index: number } = {
 
 function getCacheKey(element: TextElement): string | number {
     return element.hasFeatureId() ? element.featureId! : element.text;
+}
+
+function findDuplicateById(element: TextElement, candidates: TextElementState[]): number {
+    assert(candidates.length === 1);
+    let duplicateIndex = -1;
+
+    const cachedElement = candidates[0].element;
+    assert(element.featureId === cachedElement.featureId);
+
+    if (cachedElement.text === element.text) {
+        duplicateIndex = 0;
+    } else {
+        duplicateIndex = -1;
+        // Labels with different text shouldn't share the same feature id. This points to
+        // an issue on the map data side. Submit a ticket to the corresponding map backend
+        // issue tracking system if available (e.g. OLPRPS project in JIRA for OMV),
+        // indicating affected labels including tile keys, texts and feature id.
+        logger.warn(
+            `Text feature id ${element.featureId} collision between "${element.text} and \
+             ${cachedElement.text}`
+        );
+    }
+    return duplicateIndex;
+}
+
+type DuplicateCmp = (
+    newCandidate: TextElement,
+    newDistance: number,
+    oldCandidate: TextElement,
+    oldDistance: number
+) => boolean;
+
+function isBetterPathDuplicate(
+    newCandidate: TextElement,
+    _newDistance: number,
+    oldCandidate: TextElement,
+    _oldDistance: number
+): boolean {
+    if (newCandidate.pathLengthSqr === undefined) {
+        return false;
+    }
+    if (oldCandidate.pathLengthSqr === undefined) {
+        return false;
+    }
+    return newCandidate.pathLengthSqr > oldCandidate.pathLengthSqr;
+}
+
+function isBetterPointDuplicate(
+    _newCandidate: TextElement,
+    newDistance: number,
+    _oldCandidate: TextElement,
+    oldDistance: number
+): boolean {
+    return newDistance < oldDistance;
+}
+
+/**
+ * Finds a duplicate
+ * @param elementState
+ * @param candidates
+ * @param zoomLevel
+ * @returns The index of the candidate considered
+ */
+function findDuplicateByText(
+    elementState: TextElementState,
+    candidates: TextElementState[],
+    zoomLevel: number
+): number {
+    const element = elementState.element;
+    const maxSqDistError = getDedupSqDistTolerance(zoomLevel);
+    const entryCount = candidates.length;
+    const elementPosition = element.position;
+    const elementVisible = elementState.visible;
+    let dupIndex: number = -1;
+    let duplicate: TextElement | undefined;
+    let dupDistSquared: number = Infinity;
+    const isBetterDuplicate: DuplicateCmp =
+        element.type === TextElementType.PoiLabel ? isBetterPointDuplicate : isBetterPathDuplicate;
+
+    for (let i = 0; i < entryCount; ++i) {
+        const candidateEntry = candidates[i];
+        const cachedElement = candidateEntry.element;
+        const areDiffType = element.type !== cachedElement.type;
+        const areBothVisible = elementVisible && candidateEntry.visible;
+        if (areDiffType || areBothVisible) {
+            // Two text elements with different type or visible at the same time are always
+            // considered distinct.
+            continue;
+        }
+        const distSquared = elementPosition.distanceToSquared(cachedElement.position);
+        if (distSquared > maxSqDistError) {
+            // Cached text element is too far away to be a duplicate.
+            continue;
+        }
+        if (
+            duplicate === undefined ||
+            isBetterDuplicate(cachedElement, distSquared, duplicate, dupDistSquared)
+        ) {
+            dupIndex = i;
+            duplicate = cachedElement;
+            dupDistSquared = distSquared;
+        }
+    }
+
+    return dupIndex;
 }
 
 /**
@@ -257,51 +363,10 @@ export class TextElementStateCache {
         }
 
         tmpCachedDuplicate.entries = cachedEntries;
+        tmpCachedDuplicate.index = element.hasFeatureId()
+            ? findDuplicateById(element, cachedEntries)
+            : findDuplicateByText(elementState, cachedEntries, zoomLevel);
 
-        if (element.hasFeatureId()) {
-            // Duplicate with same feature id found.
-            assert(cachedEntries.length === 1);
-            const cachedElement = cachedEntries[0].element;
-            assert(element.featureId === cachedElement.featureId);
-
-            if (cachedElement.text === element.text) {
-                tmpCachedDuplicate.index = 0;
-            } else {
-                tmpCachedDuplicate.index = -1;
-                // Labels with different text shouldn't share the same feature id. This points to
-                // an issue on the map data side. Submit a ticket to the corresponding map backend
-                // issue tracking system if available (e.g. OLPRPS project in JIRA for OMV),
-                // indicating affected labels including tile keys, texts and feature id.
-                logger.warn(
-                    `Text feature id ${element.featureId} collision between "${element.text} and \
-                     ${cachedElement.text}`
-                );
-            }
-            return tmpCachedDuplicate;
-        }
-
-        // Other labels found with the same text. Check if they're near enough to be considered
-        // duplicates.
-        const maxSqDistError = getDedupSqDistTolerance(zoomLevel);
-        const entryCount = cachedEntries.length;
-        const elementPosition = element.position;
-        const elementVisible = elementState.visible;
-        let duplicateIndex: number = -1;
-        for (let i = 0; i < entryCount; ++i) {
-            const cachedEntry = cachedEntries[i];
-            if (elementVisible && cachedEntry.visible) {
-                // Two text elements visible at the same time are always considered distinct.
-                continue;
-            }
-            const distSquared = elementPosition.distanceToSquared(cachedEntry.element.position);
-
-            if (distSquared < maxSqDistError) {
-                duplicateIndex = i;
-                break;
-            }
-        }
-
-        tmpCachedDuplicate.index = duplicateIndex;
         return tmpCachedDuplicate;
     }
 }

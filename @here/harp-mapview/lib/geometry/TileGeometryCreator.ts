@@ -422,6 +422,7 @@ export class TileGeometryCreator {
                     fadeNear,
                     fadeFar
                 );
+                textElement.pathLengthSqr = textPath.pathLengthSqr;
                 textElement.minZoomLevel =
                     technique.minZoomLevel !== undefined
                         ? technique.minZoomLevel
