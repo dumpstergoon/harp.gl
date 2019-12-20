@@ -6,6 +6,7 @@
 
 import { AreaCopyrightInfo, CopyrightCoverageProvider } from "@here/harp-mapview";
 import { CatalogClient, DataStoreContext, HRN } from "@here/olp-sdk-dataservice-read";
+import { EnvironmentName } from "@here/olp-sdk-dataservice-read/dist/@here/olp-sdk-dataservice-read/lib/getEnvLookupUrl";
 
 /**
  * [[OlpCopyrightProvider]] initialization parameters.
@@ -34,6 +35,9 @@ export interface OlpCopyrightProviderParams {
      * @default `"copyright_suppliers_here"`
      */
     partition?: string;
+
+    /** The name of environment. If omitted, environment from catalog HRN will be used. */
+    environment?: EnvironmentName;
 }
 
 const DEFAULT_LAYER = "copyright";
@@ -62,7 +66,7 @@ export class OlpCopyrightProvider extends CopyrightCoverageProvider {
         const hrn = HRN.fromString(this.m_params.hrn);
         const context = new DataStoreContext({
             getToken: this.m_params.getToken,
-            environment: hrn.data.partition
+            environment: this.m_params.environment || hrn.data.partition
         });
         const catalogClient = new CatalogClient({
             context,
