@@ -15,7 +15,10 @@ export interface HarpWebpackConfig {
     htmlTemplate?: string;
 }
 
-export function addHarpWebpackConfig(config?: Configuration, harpConfig?: HarpWebpackConfig) {
+export function addHarpWebpackConfig(
+    config?: Configuration,
+    harpConfig?: HarpWebpackConfig
+): Configuration[] {
     if (Array.isArray(config) || typeof config === "function") {
         throw new Error("config passed to addHarpWebpackConfig must be a Configuration object");
     }
