@@ -620,6 +620,12 @@ export class TopViewClipPlanesEvaluator extends ElevationBasedClipPlanesEvaluato
  * between camera __look at__ vector and the ground surface normal.
  */
 export class TiltViewClipPlanesEvaluator extends TopViewClipPlanesEvaluator {
+    /*
+        Classes NEED to call super inside the constructor. ABSOLUTELY MUST.
+    */
+    constructor(...args) {
+        super(...args); // <== Like so. Now we can look at stuff at greater than a 45 degree angle.
+    }
     /**
      * Calculate the camera distance to the ground in direction of look at vector.
      * This is not equivalent to camera altitude cause value will change according to look at
